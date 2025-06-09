@@ -2,22 +2,22 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Face-box overlay</title>
+  <title>Static-Site Face Detector</title>
 
-  <!-- ✅ browser-ready bundle (NOT the Node entry) -->
-  <script src="https://unpkg.com/face-api.js@0.22.2/dist/face-api.min.js"></script>
+  <!-- Browser-ready bundle (gives you window.faceapi) -->
+  <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
 
   <style>
-    body{font-family:sans-serif;text-align:center;padding:40px}
-    #wrap{position:relative;display:inline-block}
-    #wrap img,#wrap canvas{max-width:100%;height:auto}
-    #wrap canvas{position:absolute;top:0;left:0}
+    body { font-family: sans-serif; text-align: center; padding: 40px }
+    #wrap { position: relative; display: inline-block }
+    #wrap img, #wrap canvas { max-width: 100%; height: auto }
+    #wrap canvas { position: absolute; top: 0; left: 0 }
   </style>
 </head>
 <body>
-  <h2>Face detector (static HTML)</h2>
+  <h2>Face detector (local weights)</h2>
 
-  <input type="file" id="picker" accept="image/*">
+  <input type="file" id="pick" accept="image/*">
   <button id="run" disabled>Detect faces</button><br><br>
 
   <div id="wrap">
@@ -26,53 +26,55 @@
   </div>
 
 <script>
-const MODEL_URL = 'https://unpkg.com/face-api.js@0.22.2/weights/';
+const MODEL_URL = './model/';               // ⬅ points at local folder
 
 (async () => {
-  // load once
+  // load local TinyFaceDetector weights once
   await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
 })();
 
-const picker  = document.getElementById('picker');
-const img     = document.getElementById('shot');
-const canvas  = document.getElementById('overlay');
-const runBtn  = document.getElementById('run');
+const pick = document.getElementById('pick');
+const img  = document.getElementById('shot');
+const cvs  = document.getElementById('overlay');
+const run  = document.getElementById('run');
 
-// import image
-picker.addEventListener('change', () => {
-  const file = picker.files[0];
+// handle image selection
+pick.addEventListener('change', () => {
+  const file = pick.files[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = () => {
-    img.src = reader.result;
-    runBtn.disabled = false;
+  reader.onload = e => {
+    img.src = e.target.result;
+    run.disabled = false;
     img.style.display = 'block';
-    canvas.style.display = 'none';
+    cvs.style.display = 'none';
   };
   reader.readAsDataURL(file);
 });
 
-// detect & draw
-runBtn.addEventListener('click', async () => {
+// detect faces and draw boxes
+run.addEventListener('click', async () => {
   if (!img.src) return;
 
-  canvas.width  = img.naturalWidth;
-  canvas.height = img.naturalHeight;
+  cvs.width  = img.naturalWidth;
+  cvs.height = img.naturalHeight;
 
   const dets = await faceapi.detectAllFaces(
     img,
     new faceapi.TinyFaceDetectorOptions({ scoreThreshold: 0.4 })
   );
 
-  const ctx = canvas.getContext('2d');
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-  ctx.drawImage(img,0,0);
+  const ctx = cvs.getContext('2d');
+  ctx.clearRect(0, 0, cvs.width, cvs.height);
+  ctx.drawImage(img, 0, 0);
   ctx.strokeStyle = '#00e0ff';
   ctx.lineWidth   = 2;
-  dets.forEach(({box}) => ctx.strokeRect(box.x,box.y,box.width,box.height));
+  dets.forEach(({ box }) =>
+    ctx.strokeRect(box.x, box.y, box.width, box.height)
+  );
 
-  img.style.display    = 'none';
-  canvas.style.display = 'block';
+  img.style.display  = 'none';
+  cvs.style.display  = 'block';
 });
 </script>
 </body>
