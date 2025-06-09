@@ -4,77 +4,106 @@
   <meta charset="UTF-8">
   <title>Static-Site Face Detector</title>
 
-  <!-- Browser-ready bundle (gives you window.faceapi) -->
   <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
 
   <style>
-    body { font-family: sans-serif; text-align: center; padding: 40px }
-    #wrap { position: relative; display: inline-block }
-    #wrap img, #wrap canvas { max-width: 100%; height: auto }
-    #wrap canvas { position: absolute; top: 0; left: 0 }
+    body {font-family:sans-serif;text-align:center;padding:40px}
+    #wrap {position:relative;display:inline-block}
+    #wrap img, #wrap canvas {max-width:100%;height:auto}
+    #wrap canvas {position:absolute;top:0;left:0}
+    #status {margin-top:15px;color:#888}
   </style>
 </head>
 <body>
   <h2>Face detector (local weights)</h2>
 
-  <input type="file" id="pick" accept="image/*">
-  <button id="run" disabled>Detect faces</button><br><br>
+  <input type="file"   id="pick" accept="image/*">
+  <button id="run" disabled>Detect faces</button>
 
   <div id="wrap">
-    <img id="shot">
-    <canvas id="overlay"></canvas>
+    <img    id="shot"   hidden>
+    <canvas id="layer"  hidden></canvas>
   </div>
 
-<script>
-const MODEL_URL = './model/';               // ⬅ points at local folder
+  <p id="status">loading model…</p>
 
+<script>
+const MODEL_URL = './model/';            // local weights folder
+const pick  = document.getElementById('pick');
+const run   = document.getElementById('run');
+const img   = document.getElementById('shot');
+const layer = document.getElementById('layer');
+const info  = document.getElementById('status');
+
+// 1️⃣ load weights first
 (async () => {
-  // load local TinyFaceDetector weights once
   await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+  info.textContent = 'model ready — choose an image';
 })();
 
-const pick = document.getElementById('pick');
-const img  = document.getElementById('shot');
-const cvs  = document.getElementById('overlay');
-const run  = document.getElementById('run');
-
-// handle image selection
+// 2️⃣ when the user picks an image
 pick.addEventListener('change', () => {
   const file = pick.files[0];
   if (!file) return;
+
   const reader = new FileReader();
   reader.onload = e => {
     img.src = e.target.result;
-    run.disabled = false;
-    img.style.display = 'block';
-    cvs.style.display = 'none';
+    img.hidden   = false;
+    layer.hidden = true;
+    run.disabled = true;          // enable only after image fully loads
+    info.textContent = 'image loaded — click “Detect faces”';
   };
   reader.readAsDataURL(file);
 });
 
-// detect faces and draw boxes
-run.addEventListener('click', async () => {
-  if (!img.src) return;
+// 3️⃣ wait for the <img> to finish decoding so naturalWidth is valid
+img.addEventListener('load', () => {
+  run.disabled = false;
+});
 
-  cvs.width  = img.naturalWidth;
-  cvs.height = img.naturalHeight;
+// 4️⃣ run detection
+run.addEventListener('click', async () => {
+  run.disabled = true;            // prevent double-click
+  info.textContent = 'detecting…';
+
+  // make sure the image really has dimensions
+  await img.decode();
+  layer.width  = img.naturalWidth;
+  layer.height = img.naturalHeight;
 
   const dets = await faceapi.detectAllFaces(
     img,
     new faceapi.TinyFaceDetectorOptions({ scoreThreshold: 0.4 })
   );
 
-  const ctx = cvs.getContext('2d');
-  ctx.clearRect(0, 0, cvs.width, cvs.height);
-  ctx.drawImage(img, 0, 0);
-  ctx.strokeStyle = '#00e0ff';
-  ctx.lineWidth   = 2;
-  dets.forEach(({ box }) =>
-    ctx.strokeRect(box.x, box.y, box.width, box.height)
-  );
+  const ctx = layer.getContext('2d');
+  ctx.clearRect(0,0,layer.width,layer.height);
+  ctx.drawImage(img,0,0);
 
-  img.style.display  = 'none';
-  cvs.style.display  = 'block';
+  if (dets.length === 0) {
+    // no faces – overlay message but keep the photo visible
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(0,0,layer.width,40);
+    ctx.fillStyle = '#fff';
+    ctx.font = '20px sans-serif';
+    ctx.fillText('No faces detected',10,28);
+    layer.hidden = false;
+    img.hidden   = true;          // show canvas with message
+    info.textContent = 'no faces found';
+  } else {
+    // draw rectangles
+    ctx.strokeStyle = '#00e0ff';
+    ctx.lineWidth   = 2;
+    dets.forEach(({box}) =>
+      ctx.strokeRect(box.x,box.y,box.width,box.height)
+    );
+    layer.hidden = false;
+    img.hidden   = true;
+    info.textContent = `${dets.length} face${dets.length>1?'s':''} detected`;
+  }
+
+  run.disabled = false;
 });
 </script>
 </body>
