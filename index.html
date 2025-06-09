@@ -2,9 +2,9 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Static-Site Face Detector</title>
+  <title>Static-Site Face Detector with Hats</title>
 
-  <!-- face-api browser bundle -->
+  <!-- face-api.js browser bundle -->
   <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
 
   <style>
@@ -14,71 +14,69 @@
     #wrap canvas {
       position: absolute;
       top: 0; left: 0;
-      pointer-events: none; /* clicks go through to the img/input */
+      pointer-events: none;
     }
     #status { margin-top: 15px; color: #888 }
   </style>
 </head>
 <body>
-  <h2>Face detector (local weights)</h2>
+  <h2>Face Detector with Hats</h2>
 
   <input type="file" id="pick" accept="image/*">
-  <button id="run" disabled>Detect faces</button>
+  <button id="run" disabled>Detect & Hat Faces</button>
   <p id="status">loading model…</p>
 
   <div id="wrap">
-    <img    id="shot"   hidden>
-    <canvas id="layer"  hidden></canvas>
+    <img    id="shot"  hidden>
+    <canvas id="layer" hidden></canvas>
   </div>
 
 <script>
-const MODEL_URL = './model/'; // your weights folder
+const MODEL_URL = './model/';  
 const pick   = document.getElementById('pick');
 const runBtn = document.getElementById('run');
 const img    = document.getElementById('shot');
 const layer  = document.getElementById('layer');
 const info   = document.getElementById('status');
 
-// 1) Load model
-(async() => {
+// preload hat image
+const hatImg = new Image();
+hatImg.src = 'hat.png';
+
+(async () => {
   await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
   info.textContent = 'model ready — choose an image';
 })();
 
-// 2) When user picks file
 pick.addEventListener('change', () => {
-  const f = pick.files[0];
-  if (!f) return;
+  const f = pick.files[0]; if (!f) return;
   const r = new FileReader();
   r.onload = e => {
     img.src = e.target.result;
     img.hidden   = false;
     layer.hidden = true;
     runBtn.disabled = true;
-    info.textContent = 'image loaded — click “Detect faces”';
+    info.textContent = 'image loaded — click “Detect & Hat Faces”';
   };
   r.readAsDataURL(f);
 });
 
-// 3) Enable “Detect” when image fully loads
 img.addEventListener('load', () => {
   runBtn.disabled = false;
-  // size the canvas to match the displayed image
   layer.width  = img.naturalWidth;
   layer.height = img.naturalHeight;
 });
 
-// 4) Detect & draw
 runBtn.addEventListener('click', async () => {
   runBtn.disabled = true;
   info.textContent = 'detecting…';
   await img.decode();
+  await hatImg.decode();
 
-  // two-pass detection for best guess
   let dets = await faceapi.detectAllFaces(
     img, new faceapi.TinyFaceDetectorOptions({ scoreThreshold: 0.4 })
   );
-  let bestGuess = false;
+
   if (dets.length === 0) {
     const loose = await faceapi.detectAllFaces(
       img, new faceapi.TinyFaceDetectorOptions({ scoreThreshold: 0.05 })
@@ -86,16 +84,14 @@ runBtn.addEventListener('click', async () => {
     if (loose.length) {
       loose.sort((a,b)=>b.score - a.score);
       dets = [loose[0]];
-      bestGuess = true;
     }
   }
 
-  // clear previous drawings
   const ctx = layer.getContext('2d');
   ctx.clearRect(0,0,layer.width,layer.height);
+  ctx.drawImage(img, 0, 0);
 
   if (dets.length === 0) {
-    // overlay "no faces"
     ctx.fillStyle = 'rgba(0,0,0,0.6)';
     ctx.fillRect(0,0,layer.width,40);
     ctx.fillStyle = '#fff';
@@ -103,20 +99,18 @@ runBtn.addEventListener('click', async () => {
     ctx.fillText('No faces detected', 10, 28);
     info.textContent = 'no faces found';
   } else {
-    // draw boxes
-    ctx.strokeStyle = bestGuess ? '#ffd000' : '#00e0ff';
-    ctx.lineWidth   = 2;
-    ctx.setLineDash(bestGuess ? [6,4] : []);
-    dets.forEach(({ box }) =>
-      ctx.strokeRect(box.x, box.y, box.width, box.height)
-    );
-    ctx.setLineDash([]);
-    info.textContent = bestGuess
-      ? 'best-guess face highlighted'
-      : `${dets.length} face${dets.length>1?'s':''} detected`;
+    dets.forEach(({ box }) => {
+      // scale hat to face width
+      const hatW = box.width;
+      const hatH = hatImg.naturalHeight / hatImg.naturalWidth * hatW;
+      const x = box.x + box.width/2 - hatW/2;
+      const y = box.y - hatH;
+      ctx.drawImage(hatImg, x, y, hatW, hatH);
+    });
+    info.textContent = `${dets.length} hat${dets.length>1?'s':''} placed`;
   }
 
-  layer.hidden = false;  // show overlays
+  layer.hidden = false;
   runBtn.disabled = false;
 });
 </script>
