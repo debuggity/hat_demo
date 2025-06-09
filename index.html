@@ -101,8 +101,8 @@ runBtn.addEventListener('click', async () => {
   } else {
     dets.forEach(({ box }) => {
       // scale hat to face width
-      const hatW = box.width;
-      const hatH = hatImg.naturalHeight / hatImg.naturalWidth * hatW;
+      const hatW = box.width*1.25;
+      const hatH = (hatImg.naturalHeight / hatImg.naturalWidth * hatW) * 1.25;
       const x = box.x + box.width/2 - hatW/2;
       const y = box.y - hatH;
       ctx.drawImage(hatImg, x, y, hatW, hatH);
