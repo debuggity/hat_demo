@@ -2,116 +2,260 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Static-Site Face Detector with Hats</title>
+  <title>Face-Hats Suite</title>
 
-  <!-- face-api.js browser bundle -->
+  <!-- face-api.js -->
   <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+  <!-- interact.js -->
+  <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
+
+  <!-- pixel font -->
+  <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
 
   <style>
-    body { font-family: sans-serif; text-align: center; padding: 40px }
-    #wrap { position: relative; display: inline-block }
-    #wrap img, #wrap canvas { max-width: 100%; height: auto; display: block }
-    #wrap canvas {
-      position: absolute;
-      top: 0; left: 0;
-      pointer-events: none;
-    }
-    #status { margin-top: 15px; color: #888 }
+  /* ───── overall “PoolSuite” vibe ───── */
+  :root{
+    --bg:        #f2efe8;
+    --ink:       #2b2b2b;
+    --mid:       #c2c2c2;
+    --light:     #faf9f5;
+    --shadow:    #7a7a7a;
+    --corner:    2px;
+  }
+  html,body{height:100%;margin:0}
+  body{
+    font-family:'VT323',monospace;
+    background:
+      var(--bg) url('wallpaper.png') repeat fixed;          /* faint script watermark */
+    color:var(--ink);
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding:60px 20px;
+    gap:30px;
+  }
+  h2{
+    margin:0;
+    font-size:32px;
+    letter-spacing:1px;
+    text-shadow:1px 1px var(--light);
+  }
+
+  /* ───── classic window frame ───── */
+  .window{
+    background:var(--light);
+    border:2px solid var(--ink);
+    box-shadow:0 0 0 1px var(--shadow);
+    display:inline-block;
+  }
+  .titlebar{
+    height:24px;
+    background:var(--mid);
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:0 6px;
+    border-bottom:2px solid var(--ink);
+    font-size:19px;
+  }
+  .controls{display:flex;gap:3px}
+  .btn-square{
+    width:14px;height:14px;
+    background:var(--light);
+    border:1px solid var(--ink);
+  }
+
+  /* ───── interior layout ───── */
+  .content{padding:20px;text-align:center}
+  #wrap{position:relative;display:inline-block;max-width:100%;overflow:visible}
+  #wrap img{display:block;max-width:100%;height:auto;image-rendering:pixelated}
+  .hat{position:absolute;cursor:move;touch-action:none;user-select:none}
+
+  /* ───── retro buttons & inputs ───── */
+  input[type=file],button{
+    font-family:inherit;
+    background:var(--light);
+    border:2px solid var(--ink);
+    padding:6px 14px;
+    margin:4px;
+    cursor:pointer;
+  }
+  input[type=file]::file-selector-button{
+    font-family:inherit;
+    background:var(--mid);
+    border:none;
+    padding:4px 10px;
+    cursor:pointer;
+  }
+  button:disabled{opacity:.4;cursor:not-allowed}
+
+  #status{margin-top:12px;color:var(--shadow);font-size:18px}
   </style>
 </head>
 <body>
-  <h2>Face Detector with Hats</h2>
 
-  <input type="file" id="pick" accept="image/*">
-  <button id="run" disabled>Detect & Hat Faces</button>
-  <p id="status">loading model…</p>
+  <h2>Face Detector · Moveable Hats</h2>
 
-  <div id="wrap">
-    <img    id="shot"  hidden>
-    <canvas id="layer" hidden></canvas>
+  <!-- main app window -->
+  <div class="window">
+    <div class="titlebar">
+      <span>Hat Suite v1.0</span>
+      <div class="controls">
+        <div class="btn-square"></div>
+        <div class="btn-square"></div>
+      </div>
+    </div>
+
+    <div class="content">
+      <input type="file" id="pick" accept="image/*">
+      <button id="run" disabled>ADHDify</button>
+      <button id="download" disabled>Download PNG</button>
+      <p id="status">loading model…</p>
+      <br><br>
+      <div id="wrap">
+        <img id="shot" hidden>
+        <canvas id="layer" hidden></canvas>
+      </div>
+    </div>
   </div>
 
 <script>
-const MODEL_URL = './model/';  
-const pick   = document.getElementById('pick');
-const runBtn = document.getElementById('run');
-const img    = document.getElementById('shot');
-const layer  = document.getElementById('layer');
-const info   = document.getElementById('status');
+const MODEL_URL='./model/';
+const pick=document.getElementById('pick');
+const runBtn=document.getElementById('run');
+const dlBtn=document.getElementById('download');
+const img=document.getElementById('shot');
+const layer=document.getElementById('layer');
+const info=document.getElementById('status');
+const wrap=document.getElementById('wrap');
 
-// preload hat image
-const hatImg = new Image();
-hatImg.src = 'hat.png';
+const hatSrc='hat.png';
+const hatBase=new Image(); hatBase.src=hatSrc;
 
-(async () => {
+const hats=[];
+const OVERHANG=.5;
+
+(async()=>{
   await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
-  info.textContent = 'model ready — choose an image';
+  info.textContent='model ready — choose an image';
 })();
 
-pick.addEventListener('change', () => {
-  const f = pick.files[0]; if (!f) return;
-  const r = new FileReader();
-  r.onload = e => {
-    img.src = e.target.result;
-    img.hidden   = false;
-    layer.hidden = true;
-    runBtn.disabled = true;
-    info.textContent = 'image loaded — click “Detect & Hat Faces”';
+pick.addEventListener('change',()=>{
+  const f=pick.files[0]; if(!f) return;
+  const r=new FileReader();
+  r.onload=e=>{
+    hats.forEach(h=>h.remove()); hats.length=0;
+    dlBtn.disabled=true;
+    img.src=e.target.result;
+    img.hidden=false; layer.hidden=true;
+    runBtn.disabled=true;
+    info.textContent='image loaded — click “Detect & Add Hats”';
   };
   r.readAsDataURL(f);
 });
 
-img.addEventListener('load', () => {
-  runBtn.disabled = false;
-  layer.width  = img.naturalWidth;
-  layer.height = img.naturalHeight;
+img.addEventListener('load',()=>{
+  runBtn.disabled=false;
+  wrap.style.width=img.naturalWidth+'px';
+  wrap.style.height=img.naturalHeight+'px';
+  layer.width=img.naturalWidth; layer.height=img.naturalHeight;
 });
 
-runBtn.addEventListener('click', async () => {
-  runBtn.disabled = true;
-  info.textContent = 'detecting…';
-  await img.decode();
-  await hatImg.decode();
+runBtn.addEventListener('click',async()=>{
+  runBtn.disabled=true;
+  info.textContent='detecting…';
+  await Promise.all([img.decode(),hatBase.decode()]);
 
-  let dets = await faceapi.detectAllFaces(
-    img, new faceapi.TinyFaceDetectorOptions({ scoreThreshold: 0.4 })
+  let dets=await faceapi.detectAllFaces(
+    img,
+    new faceapi.TinyFaceDetectorOptions({scoreThreshold:.4})
   );
-
-  if (dets.length === 0) {
-    const loose = await faceapi.detectAllFaces(
-      img, new faceapi.TinyFaceDetectorOptions({ scoreThreshold: 0.05 })
+  if(!dets.length){
+    const loose=await faceapi.detectAllFaces(
+      img,
+      new faceapi.TinyFaceDetectorOptions({scoreThreshold:.05})
     );
-    if (loose.length) {
-      loose.sort((a,b)=>b.score - a.score);
-      dets = [loose[0]];
-    }
+    if(loose.length){ loose.sort((a,b)=>b.score-a.score); dets=[loose[0]]; }
   }
+  hats.forEach(h=>h.remove()); hats.length=0;
+  if(!dets.length){
+    info.textContent='no faces found'; runBtn.disabled=false; return;
+  }
+  dets.forEach(({box})=>addHat(box));
+  info.textContent=`${dets.length} hat${dets.length>1?'s':''} placed — drag / wheel to rotate / resize`;
+  dlBtn.disabled=false; runBtn.disabled=false;
+});
 
-  const ctx = layer.getContext('2d');
-  ctx.clearRect(0,0,layer.width,layer.height);
-  ctx.drawImage(img, 0, 0);
+function clampPos({x,y,w,h}){
+  const maxX=wrap.clientWidth-w*(1-OVERHANG);
+  const minX=-w*OVERHANG;
+  const maxY=wrap.clientHeight-h*(1-OVERHANG);
+  const minY=-h*OVERHANG;
+  return{ x:Math.min(Math.max(x,minX),maxX),
+          y:Math.min(Math.max(y,minY),maxY) };
+}
 
-  if (dets.length === 0) {
-    ctx.fillStyle = 'rgba(0,0,0,0.6)';
-    ctx.fillRect(0,0,layer.width,40);
-    ctx.fillStyle = '#fff';
-    ctx.font = '20px sans-serif';
-    ctx.fillText('No faces detected', 10, 28);
-    info.textContent = 'no faces found';
-  } else {
-    dets.forEach(({ box }) => {
-      // scale hat to face width
-      const hatW = box.width*1.25;
-      const hatH = (hatImg.naturalHeight / hatImg.naturalWidth * hatW) * 1.25;
-      const x = box.x + box.width/2 - hatW/2;
-      const y = box.y - (hatH*.95);
-      ctx.drawImage(hatImg, x, y, hatW, hatH);
+function addHat(box){
+  const h=document.createElement('img');
+  h.src=hatSrc; h.className='hat';
+
+  const w=box.width*1.25;
+  const ht=hatBase.naturalHeight/hatBase.naturalWidth*w*1.25;
+  let x=box.x+box.width/2-w/2;
+  let y=box.y-ht*.95;
+  ({x,y}=clampPos({x,y,w,h:ht}));
+
+  Object.assign(h.style,{width:w+'px',height:ht+'px',left:x+'px',top:y+'px',transform:'rotate(0deg)'});
+  Object.assign(h.dataset,{x,y,w,h:ht,rot:0});
+
+  h.addEventListener('wheel',e=>{
+    e.preventDefault();
+    const ang=(+h.dataset.rot)+e.deltaY*.05;
+    h.dataset.rot=ang;
+    h.style.transform=`rotate(${ang}deg)`;
+  });
+
+  wrap.appendChild(h); hats.push(h);
+
+  interact(h)
+    .draggable({
+      listeners:{move(ev){
+        let x=+h.dataset.x+ev.dx;
+        let y=+h.dataset.y+ev.dy;
+        ({x,y}=clampPos({x,y,w:+h.dataset.w,h:+h.dataset.h}));
+        Object.assign(h.dataset,{x,y});
+        h.style.left=x+'px'; h.style.top=y+'px';
+      }}
+    })
+    .resizable({edges:{left:true,right:true,top:true,bottom:true}})
+    .on('resizemove',ev=>{
+      let{width,height}=ev.rect;
+      let x=+h.dataset.x+ev.deltaRect.left;
+      let y=+h.dataset.y+ev.deltaRect.top;
+      ({x,y}=clampPos({x,y,w:width,h:height}));
+      Object.assign(h.dataset,{x,y,w:width,h:height});
+      Object.assign(h.style,{left:x+'px',top:y+'px',width:width+'px',height:height+'px'});
     });
-    info.textContent = `${dets.length} hat${dets.length>1?'s':''} placed`;
-  }
+}
 
-  layer.hidden = false;
-  runBtn.disabled = false;
+dlBtn.addEventListener('click',()=>{
+  if(!hats.length) return;
+  const out=document.createElement('canvas');
+  out.width=img.naturalWidth; out.height=img.naturalHeight;
+  const ctx=out.getContext('2d');
+  ctx.drawImage(img,0,0);
+  hats.forEach(h=>{
+    const{oX:x,oY:y,w,h:ht,rot}=Object.fromEntries(Object.entries(h.dataset).map(([k,v])=>[k,parseFloat(v)]));
+    ctx.save();
+    ctx.translate(x+w/2,y+ht/2);
+    ctx.rotate(rot*Math.PI/180);
+    ctx.drawImage(hatBase,-w/2,-ht/2,w,ht);
+    ctx.restore();
+  });
+  const link=document.createElement('a');
+  link.href=out.toDataURL('image/png');
+  link.download='face-hats.png';
+  link.click();
 });
 </script>
 </body>
