@@ -8,110 +8,115 @@
   <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
 
   <style>
-    body {font-family:sans-serif;text-align:center;padding:40px}
-    #wrap {position:relative;display:inline-block}
-    #wrap img, #wrap canvas {max-width:100%;height:auto}
-    #wrap canvas {position:absolute;top:0;left:0}
-    #status {margin-top:15px;color:#888}
+    body { font-family: sans-serif; text-align: center; padding: 40px }
+    #wrap { position: relative; display: inline-block }
+    #wrap img, #wrap canvas { max-width: 100%; height: auto; display: block }
+    #wrap canvas {
+      position: absolute;
+      top: 0; left: 0;
+      pointer-events: none; /* clicks go through to the img/input */
+    }
+    #status { margin-top: 15px; color: #888 }
   </style>
 </head>
 <body>
   <h2>Face detector (local weights)</h2>
 
-  <input type="file" id="pick"  accept="image/*">
-  <button      id="run"  disabled>Detect faces</button>
+  <input type="file" id="pick" accept="image/*">
+  <button id="run" disabled>Detect faces</button>
+  <p id="status">loading model…</p>
 
   <div id="wrap">
     <img    id="shot"   hidden>
     <canvas id="layer"  hidden></canvas>
   </div>
 
-  <p id="status">loading model…</p>
-
 <script>
-const MODEL_URL = './model/';               // <- your local weights folder
+const MODEL_URL = './model/'; // your weights folder
 const pick   = document.getElementById('pick');
 const runBtn = document.getElementById('run');
 const img    = document.getElementById('shot');
 const layer  = document.getElementById('layer');
 const info   = document.getElementById('status');
 
-// 1) load weights once
-(async () => {
+// 1) Load model
+(async() => {
   await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
   info.textContent = 'model ready — choose an image';
 })();
 
-// 2) choose an image
+// 2) When user picks file
 pick.addEventListener('change', () => {
-  const f = pick.files[0]; if (!f) return;
+  const f = pick.files[0];
+  if (!f) return;
   const r = new FileReader();
   r.onload = e => {
     img.src = e.target.result;
     img.hidden   = false;
     layer.hidden = true;
+    runBtn.disabled = true;
     info.textContent = 'image loaded — click “Detect faces”';
   };
   r.readAsDataURL(f);
 });
 
-// enable detect button after the <img> is fully decoded
-img.addEventListener('load', () => runBtn.disabled = false);
+// 3) Enable “Detect” when image fully loads
+img.addEventListener('load', () => {
+  runBtn.disabled = false;
+  // size the canvas to match the displayed image
+  layer.width  = img.naturalWidth;
+  layer.height = img.naturalHeight;
+});
 
-// 3) detect faces
+// 4) Detect & draw
 runBtn.addEventListener('click', async () => {
   runBtn.disabled = true;
   info.textContent = 'detecting…';
   await img.decode();
 
-  layer.width  = img.naturalWidth;
-  layer.height = img.naturalHeight;
-
-  // first pass: normal threshold
+  // two-pass detection for best guess
   let dets = await faceapi.detectAllFaces(
-    img, new faceapi.TinyFaceDetectorOptions({scoreThreshold:0.4})
+    img, new faceapi.TinyFaceDetectorOptions({ scoreThreshold: 0.4 })
   );
-
   let bestGuess = false;
-
-  // if nothing, make a “best guess” with very low threshold and keep top-1
   if (dets.length === 0) {
     const loose = await faceapi.detectAllFaces(
-      img, new faceapi.TinyFaceDetectorOptions({scoreThreshold:0.05})
+      img, new faceapi.TinyFaceDetectorOptions({ scoreThreshold: 0.05 })
     );
-    if (loose.length > 0) {
-      // sort by score high→low and keep top-1
-      loose.sort((a,b)=>b.score-a.score);
+    if (loose.length) {
+      loose.sort((a,b)=>b.score - a.score);
       dets = [loose[0]];
       bestGuess = true;
     }
   }
 
+  // clear previous drawings
   const ctx = layer.getContext('2d');
   ctx.clearRect(0,0,layer.width,layer.height);
-  ctx.drawImage(img,0,0);
 
   if (dets.length === 0) {
-    ctx.fillStyle='rgba(0,0,0,0.6)';
+    // overlay "no faces"
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
     ctx.fillRect(0,0,layer.width,40);
-    ctx.fillStyle='#fff';
-    ctx.font='20px sans-serif';
-    ctx.fillText('No faces detected',10,28);
+    ctx.fillStyle = '#fff';
+    ctx.font = '20px sans-serif';
+    ctx.fillText('No faces detected', 10, 28);
     info.textContent = 'no faces found';
   } else {
-    ctx.strokeStyle = bestGuess ? '#ffd000' : '#00e0ff'; // yellow if guess
-    ctx.lineWidth = 2;
-    ctx.setLineDash(bestGuess ? [6,4] : []);             // dashed if guess
-    dets.forEach(({box})=>ctx.strokeRect(box.x,box.y,box.width,box.height));
-
+    // draw boxes
+    ctx.strokeStyle = bestGuess ? '#ffd000' : '#00e0ff';
+    ctx.lineWidth   = 2;
+    ctx.setLineDash(bestGuess ? [6,4] : []);
+    dets.forEach(({ box }) =>
+      ctx.strokeRect(box.x, box.y, box.width, box.height)
+    );
+    ctx.setLineDash([]);
     info.textContent = bestGuess
       ? 'best-guess face highlighted'
       : `${dets.length} face${dets.length>1?'s':''} detected`;
   }
 
-  ctx.setLineDash([]);
-  layer.hidden = false;
-  img.hidden   = true;
+  layer.hidden = false;  // show overlays
   runBtn.disabled = false;
 });
 </script>
