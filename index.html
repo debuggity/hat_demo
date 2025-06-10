@@ -67,18 +67,55 @@
 
   /* ───── interior layout ───── */
   .content{padding:20px;text-align:center}
-  #wrap{position:relative;display:inline-block;max-width:100%;overflow:visible}
-  #wrap img{display:block;max-width:100%;height:auto;image-rendering:pixelated}
-  .hat{position:absolute;cursor:move;touch-action:none;user-select:none}
+    #wrap{position:relative;display:inline-block;max-width:100%;overflow:hidden}
+    #wrap img, 
+    #wrap canvas{display:block;max-width:100%;height:auto;image-rendering:pixelated} 
+  #shot,           /* the main photo  */
+  #layer{          /* the bulge canvas */
+    position:absolute;
+    top:0;left:0;
+    max-width:100%;height:auto;
+    image-rendering:pixelated;
+    pointer-events:none;
+    z-index:0;
+  }
+  .hat{position:absolute;cursor:move;touch-action:none;user-select:none;box-sizing:border-box;}
+
+  .hat.selected {
+    border: 2px dashed var(--ink);
+  }
+  .delete-btn {
+    position: absolute;
+    top: -8px; right: -8px;
+    width: 20px; height: 20px;
+    background: #ff5555;
+    color: white;
+    border: 1px solid var(--ink);
+    border-radius: 50%;
+    cursor: pointer;
+    display: none;
+    align-items: center; justify-content: center;
+    font-size: 16px; line-height: 16px;
+    font-family: sans-serif;
+    font-weight: bold;
+    z-index: 10;
+  }
+  .hat.selected .delete-btn {
+    display: flex;
+  }
 
   /* ───── retro buttons & inputs ───── */
   input[type=file],button{
     font-family:inherit;
+    font-size: 16px;
     background:var(--light);
     border:2px solid var(--ink);
-    padding:6px 14px;
+    padding:6px 12px;
     margin:4px;
     cursor:pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
   }
   input[type=file]::file-selector-button{
     font-family:inherit;
@@ -89,17 +126,24 @@
   }
   button:disabled{opacity:.4;cursor:not-allowed}
 
+  /* new icon styles */
+  button svg {
+    width: 16px;
+    height: 16px;
+    fill: currentColor;
+  }
+
   #status{margin-top:12px;color:var(--shadow);font-size:18px}
   </style>
 </head>
 <body>
 
-  <h2>Face Detector · Moveable Hats</h2>
+  <h2>Face Detector · Moveable Hats · Goofy Eyes</h2>
 
   <!-- main app window -->
   <div class="window">
     <div class="titlebar">
-      <span>Hat Suite v1.0</span>
+      <span>Hat Suite v2.0</span>
       <div class="controls">
         <div class="btn-square"></div>
         <div class="btn-square"></div>
@@ -108,9 +152,42 @@
 
     <div class="content">
       <input type="file" id="pick" accept="image/*">
-      <button id="run" disabled>ADHDify</button>
-      <button id="download" disabled>Download PNG</button>
-      <p id="status">loading model…</p>
+      <button id="run" disabled>
+        <!-- Magic Wand Icon -->
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" shape-rendering="crispEdges">
+          <path d="M15.5 0.5L10 6L11 7L13 5L15 7L16 6L14 4L16 2L15.5 0.5zM0 10L6 4L7 5L1 11L0 10z M7 0H9V2H7z M7 14H9V16H7z M0 7H2V9H0z M14 7H16V9H14z"/>
+        </svg>
+        ADHDify
+      </button>
+       <button id="ultraRun" disabled>
+        <!-- Zap Icon -->
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" shape-rendering="crispEdges">
+          <path d="M7 0L0 9h6v7l7-9H7V0z"/>
+        </svg>
+        ULTRA ADHDify
+      </button>
+      <button id="addHat" disabled>
+        <!-- Plus Icon -->
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" shape-rendering="crispEdges">
+            <path d="M7 0h2v7h7v2h-7v7h-2v-7h-7v-2h7v-7z"/>
+        </svg>
+        Add Hat
+      </button>
+      <button id="deleteHat" disabled>
+        <!-- Trash Can Icon -->
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" shape-rendering="crispEdges">
+          <path d="M2 5v11h12V5H2zm3 1h2v8H5V6zm4 0h2v8H9V6zM1 2h14v2H1V2z"/>
+        </svg>
+        Delete Selected
+      </button>
+      <button id="download" disabled>
+        <!-- Download Icon -->
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" shape-rendering="crispEdges">
+          <path d="M14 9h-3v-8h-4v8h-3l5 6 5-6zm-13 7h14v-2h-14v2z"/>
+        </svg>
+        Download PNG
+      </button>
+      <p id="status">loading models…</p>
       <br><br>
       <div id="wrap">
         <img id="shot" hidden>
@@ -123,6 +200,9 @@
 const MODEL_URL='./model/';
 const pick=document.getElementById('pick');
 const runBtn=document.getElementById('run');
+const ultraRunBtn=document.getElementById('ultraRun');
+const addBtn=document.getElementById('addHat');
+const deleteBtn=document.getElementById('deleteHat');
 const dlBtn=document.getElementById('download');
 const img=document.getElementById('shot');
 const layer=document.getElementById('layer');
@@ -133,36 +213,99 @@ const hatSrc='hat.png';
 const hatBase=new Image(); hatBase.src=hatSrc;
 
 const hats=[];
+let selectedHat = null;
 const OVERHANG=.5;
 
+// --- INITIALIZATION ---
 (async()=>{
-  await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
-  info.textContent='model ready — choose an image';
+  await Promise.all([
+    faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+    faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODEL_URL)
+  ]);
+  updateUIState();
 })();
 
+function clearHats() {
+  hats.forEach(h=>h.remove());
+  hats.length=0;
+  selectHat(null);
+}
+
+function clearOverlays() {
+    clearHats();
+    // Clear the canvas, hide it, and show the original image
+    const ctx = layer.getContext('2d');
+    ctx.clearRect(0, 0, layer.width, layer.height);
+    layer.hidden = true;
+    img.hidden = false;
+}
+
+function updateUIState() {
+    const hasImage = !img.hidden || !layer.hidden;
+    const hasDistortion = !layer.hidden;
+    const hasHats = hats.length > 0;
+
+    runBtn.disabled = !hasImage;
+    ultraRunBtn.disabled = !hasImage;
+    addBtn.disabled = !hasImage;
+    deleteBtn.disabled = !selectedHat;
+    dlBtn.disabled = !hasImage || (!hasHats && !hasDistortion);
+
+    if (selectedHat) {
+        info.textContent = 'Drag to move, resize corners, scroll to rotate, or click Delete.';
+    } else if (hasHats || hasDistortion) {
+        let parts = [];
+        if (hasHats) parts.push(`${hats.length} hat(s) placed`);
+        if (hasDistortion) parts.push('eyes distorted');
+        info.textContent = parts.join(' and ') + '. Click a hat to select it.';
+    } else if (hasImage) {
+        info.textContent = 'Image loaded. Click a button to begin.';
+    } else {
+        info.textContent = 'models ready — choose an image';
+    }
+}
+
+function selectHat(hatElement) {
+    if (selectedHat) {
+        selectedHat.classList.remove('selected');
+    }
+    selectedHat = hatElement;
+    if (selectedHat) {
+        selectedHat.classList.add('selected');
+    }
+    updateUIState();
+}
+
+// --- EVENT LISTENERS ---
 pick.addEventListener('change',()=>{
   const f=pick.files[0]; if(!f) return;
   const r=new FileReader();
   r.onload=e=>{
-    hats.forEach(h=>h.remove()); hats.length=0;
-    dlBtn.disabled=true;
+    clearOverlays();
     img.src=e.target.result;
     img.hidden=false; layer.hidden=true;
-    runBtn.disabled=true;
-    info.textContent='image loaded — click “Detect & Add Hats”';
+    // We call updateUIState in the img.onload event handler
   };
   r.readAsDataURL(f);
 });
 
 img.addEventListener('load',()=>{
-  runBtn.disabled=false;
   wrap.style.width=img.naturalWidth+'px';
   wrap.style.height=img.naturalHeight+'px';
-  layer.width=img.naturalWidth; layer.height=img.naturalHeight;
+  layer.width=img.naturalWidth;
+  layer.height=img.naturalHeight;
+  updateUIState();
+});
+
+wrap.addEventListener('click', (e) => {
+    if (e.target === wrap || e.target === img || e.target === layer) {
+        selectHat(null);
+    }
 });
 
 runBtn.addEventListener('click',async()=>{
   runBtn.disabled=true;
+  ultraRunBtn.disabled=true;
   info.textContent='detecting…';
   await Promise.all([img.decode(),hatBase.decode()]);
 
@@ -177,15 +320,110 @@ runBtn.addEventListener('click',async()=>{
     );
     if(loose.length){ loose.sort((a,b)=>b.score-a.score); dets=[loose[0]]; }
   }
-  hats.forEach(h=>h.remove()); hats.length=0;
+
+  clearOverlays();
+
   if(!dets.length){
-    info.textContent='no faces found'; runBtn.disabled=false; return;
+    info.textContent='no faces found';
+    updateUIState();
+    return;
   }
-  dets.forEach(({box})=>addHat(box));
-  info.textContent=`${dets.length} hat${dets.length>1?'s':''} placed — drag / wheel to rotate / resize`;
-  dlBtn.disabled=false; runBtn.disabled=false;
+
+  dets.forEach(({box})=>addHat({box}));
+  selectHat(hats[hats.length-1]);
+  updateUIState();
 });
 
+
+ultraRunBtn.addEventListener('click', async () => {
+  runBtn.disabled = ultraRunBtn.disabled = true;
+  info.textContent = 'ULTRA detecting…';
+  await Promise.all([img.decode(), hatBase.decode()]);
+
+  // 1) try normal ULTRA threshold
+  let dets = await faceapi
+    .detectAllFaces(img, new faceapi.TinyFaceDetectorOptions({ scoreThreshold: .30 }))
+    .withFaceLandmarks(true);
+
+  // 2) fallback to loose threshold if nothing found
+  if (!dets.length) {
+    const loose = await faceapi
+      .detectAllFaces(img, new faceapi.TinyFaceDetectorOptions({ scoreThreshold: .15 }))
+      .withFaceLandmarks(true);
+    if (loose.length) {
+      loose.sort((a, b) => b.detection.score - a.detection.score);
+      dets = [loose[0]];
+    }
+  }
+
+  clearOverlays();
+
+  if (!dets.length) {
+    info.textContent = 'no faces found for ULTRA mode';
+    updateUIState();
+    return;
+  }
+
+  // add hats & distort
+  dets.forEach(det => addHat({ box: det.detection.box }));
+  distortEyes(dets);
+
+  selectHat(hats[hats.length - 1] || null);
+  updateUIState();
+});
+
+
+
+addBtn.addEventListener('click', () => {
+    addHat({});
+    selectHat(hats[hats.length-1]);
+    updateUIState();
+});
+
+deleteBtn.addEventListener('click', () => {
+    if (!selectedHat) return;
+
+    const index = hats.indexOf(selectedHat);
+    if(index > -1) {
+        hats.splice(index, 1);
+    }
+    selectedHat.remove();
+    selectHat(null);
+    updateUIState();
+});
+
+dlBtn.addEventListener('click',()=>{
+  const hasDistortion = !layer.hidden;
+  const hasHats = hats.length > 0;
+  if(!hasHats && !hasDistortion) return;
+
+  const out=document.createElement('canvas');
+  out.width=img.naturalWidth;
+  out.height=img.naturalHeight;
+  const ctx=out.getContext('2d');
+
+  // 1. Draw the base image (either original or distorted one from the layer canvas)
+  const baseImage = hasDistortion ? layer : img;
+  ctx.drawImage(baseImage, 0, 0);
+
+  // 2. Draw hats on top
+  hats.forEach(h=>{
+    const{x, y, w, h:ht, rot}=Object.fromEntries(Object.entries(h.dataset).map(([k,v])=>[k,parseFloat(v)]));
+    ctx.save();
+    ctx.translate(x+w/2,y+ht/2);
+    ctx.rotate(rot*Math.PI/180);
+    ctx.drawImage(hatBase,-w/2,-ht/2,w,ht);
+    ctx.restore();
+  });
+
+  const link=document.createElement('a');
+  link.href=out.toDataURL('image/png');
+  link.download='face-hats-ultra.png';
+  link.click();
+});
+
+
+// --- HAT MANIPULATION ---
 function clampPos({x,y,w,h}){
   const maxX=wrap.clientWidth-w*(1-OVERHANG);
   const minX=-w*OVERHANG;
@@ -195,25 +433,54 @@ function clampPos({x,y,w,h}){
           y:Math.min(Math.max(y,minY),maxY) };
 }
 
-function addHat(box){
+function addHat({box}){
   const h=document.createElement('img');
   h.src=hatSrc; h.className='hat';
 
-  const w=box.width*1.25;
-  const ht=hatBase.naturalHeight/hatBase.naturalWidth*w*1.25;
-  let x=box.x+box.width/2-w/2;
-  let y=box.y-ht*.95;
+  let w, ht, x, y;
+
+  if (box) {
+    w=box.width*1.25;
+    ht=hatBase.naturalHeight/hatBase.naturalWidth*w*1.25;
+    x=box.x+box.width/2-w/2;
+    y=box.y-ht*.95;
+  } else {
+    w = img.naturalWidth / 4;
+    ht = hatBase.naturalHeight / hatBase.naturalWidth * w;
+    x = (wrap.clientWidth / 2) - (w / 2);
+    y = (wrap.clientHeight / 2) - (ht / 2);
+  }
+
   ({x,y}=clampPos({x,y,w,h:ht}));
 
   Object.assign(h.style,{width:w+'px',height:ht+'px',left:x+'px',top:y+'px',transform:'rotate(0deg)'});
   Object.assign(h.dataset,{x,y,w,h:ht,rot:0});
 
+  h.addEventListener('click', (e) => {
+    e.stopPropagation();
+    selectHat(h);
+  });
+
   h.addEventListener('wheel',e=>{
+    if (selectedHat !== h) return;
     e.preventDefault();
     const ang=(+h.dataset.rot)+e.deltaY*.05;
     h.dataset.rot=ang;
     h.style.transform=`rotate(${ang}deg)`;
   });
+
+  const delBtn = document.createElement('div');
+  delBtn.className = 'delete-btn';
+  delBtn.innerHTML = '×';
+  delBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const index = hats.indexOf(h);
+    if(index > -1) hats.splice(index, 1);
+    h.remove();
+    selectHat(null);
+    updateUIState();
+  });
+  h.appendChild(delBtn);
 
   wrap.appendChild(h); hats.push(h);
 
@@ -227,36 +494,128 @@ function addHat(box){
         h.style.left=x+'px'; h.style.top=y+'px';
       }}
     })
-    .resizable({edges:{left:true,right:true,top:true,bottom:true}})
-    .on('resizemove',ev=>{
-      let{width,height}=ev.rect;
-      let x=+h.dataset.x+ev.deltaRect.left;
-      let y=+h.dataset.y+ev.deltaRect.top;
-      ({x,y}=clampPos({x,y,w:width,h:height}));
-      Object.assign(h.dataset,{x,y,w:width,h:height});
-      Object.assign(h.style,{left:x+'px',top:y+'px',width:width+'px',height:height+'px'});
+    .resizable({
+        edges:{left:true,right:true,top:true,bottom:true},
+        listeners: {
+            move(ev) {
+                let{width,height}=ev.rect;
+                let x=+h.dataset.x+ev.deltaRect.left;
+                let y=+h.dataset.y+ev.deltaRect.top;
+                ({x,y}=clampPos({x,y,w:width,h:height}));
+                Object.assign(h.dataset,{x,y,w:width,h:height});
+                Object.assign(h.style,{left:x+'px',top:y+'px',width:width+'px',height:height+'px'});
+            }
+        },
+        modifiers: [
+            interact.modifiers.aspectRatio({
+                ratio: 'preserve',
+                equalDelta: true,
+            }),
+        ],
+    })
+    .on('tap', () => {
+      selectHat(h);
     });
 }
 
-dlBtn.addEventListener('click',()=>{
-  if(!hats.length) return;
-  const out=document.createElement('canvas');
-  out.width=img.naturalWidth; out.height=img.naturalHeight;
-  const ctx=out.getContext('2d');
-  ctx.drawImage(img,0,0);
-  hats.forEach(h=>{
-    const{oX:x,oY:y,w,h:ht,rot}=Object.fromEntries(Object.entries(h.dataset).map(([k,v])=>[k,parseFloat(v)]));
-    ctx.save();
-    ctx.translate(x+w/2,y+ht/2);
-    ctx.rotate(rot*Math.PI/180);
-    ctx.drawImage(hatBase,-w/2,-ht/2,w,ht);
-    ctx.restore();
-  });
-  const link=document.createElement('a');
-  link.href=out.toDataURL('image/png');
-  link.download='face-hats.png';
-  link.click();
-});
+// --- NEW & IMPROVED function to distort eyes with a smooth bulge effect ---
+function distortEyes(detections) {
+    const ctx = layer.getContext('2d');
+    ctx.drawImage(img, 0, 0, layer.width, layer.height);
+
+    const originalImageData = ctx.getImageData(0, 0, layer.width, layer.height);
+    const distortedImageData = ctx.createImageData(layer.width, layer.height);
+    const origData = originalImageData.data;
+    const newData = distortedImageData.data;
+
+    // A strength of 0.5 is a good starting point for the bulge
+    const strength = 0.65; 
+    const effectScale = 3.0; // Controls how far the bulge extends past the eye
+
+    // Helper function for bilinear interpolation. This is the key to smoothness!
+    const getInterpolatedPixel = (x, y) => {
+        const x_floor = Math.floor(x);
+        const y_floor = Math.floor(y);
+        const x_frac = x - x_floor;
+        const y_frac = y - y_floor;
+
+        // Get the four surrounding pixels
+        const p00_idx = (y_floor * layer.width + x_floor) * 4;
+        const p10_idx = (y_floor * layer.width + (x_floor + 1)) * 4;
+        const p01_idx = ((y_floor + 1) * layer.width + x_floor) * 4;
+        const p11_idx = ((y_floor + 1) * layer.width + (x_floor + 1)) * 4;
+
+        const blendedPixel = [0, 0, 0, 255]; // R, G, B, A
+
+        for (let i = 0; i < 3; i++) { // For R, G, B channels
+             // Interpolate horizontally for top and bottom
+            const top = origData[p00_idx + i] * (1 - x_frac) + origData[p10_idx + i] * x_frac;
+            const bottom = origData[p01_idx + i] * (1 - x_frac) + origData[p11_idx + i] * x_frac;
+            // Interpolate vertically
+            blendedPixel[i] = top * (1 - y_frac) + bottom * y_frac;
+        }
+        return blendedPixel;
+    };
+
+
+    // First, copy the original image to the new data buffer.
+    // We will only overwrite the pixels in the distorted areas.
+    newData.set(origData);
+
+    detections.forEach(det => {
+        const landmarks = det.landmarks;
+        const eyeRegions = [landmarks.getLeftEye(), landmarks.getRightEye()];
+
+        eyeRegions.forEach(eyePoints => {
+            const xs = eyePoints.map(p => p.x);
+            const ys = eyePoints.map(p => p.y);
+            const eyeWidth = Math.max(...xs) - Math.min(...xs);
+            const cx = Math.min(...xs) + eyeWidth / 2;
+            const cy = Math.min(...ys) + (Math.max(...ys) - Math.min(...ys)) / 2;
+            const radius = (eyeWidth / 2) * effectScale;
+            if (radius === 0) return;
+
+            // Iterate over the pixels in the effect's bounding box
+            for (let y = Math.floor(cy - radius); y < Math.ceil(cy + radius); y++) {
+                for (let x = Math.floor(cx - radius); x < Math.ceil(cx + radius); x++) {
+                    if (x < 0 || x >= layer.width || y < 0 || y >= layer.height) continue;
+
+                    const dx = x - cx;
+                    const dy = y - cy;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    if (distance < radius) {
+                        // This is the core of the bulge effect
+                        const normalizedDist = distance / radius;
+                        
+                        // A smoothstep-like curve for a nice falloff
+                        const r = normalizedDist * (1.0 - strength * (1.0 - normalizedDist));
+                        
+                        const angle = Math.atan2(dy, dx);
+                        
+                        const sourceX = cx + r * radius * Math.cos(angle);
+                        const sourceY = cy + r * radius * Math.sin(angle);
+
+                        if (sourceX >= 0 && sourceX < layer.width - 1 && sourceY >= 0 && sourceY < layer.height - 1) {
+                            const pixel = getInterpolatedPixel(sourceX, sourceY);
+                            const destIndex = (y * layer.width + x) * 4;
+                            newData[destIndex]     = pixel[0]; // R
+                            newData[destIndex + 1] = pixel[1]; // G
+                            newData[destIndex + 2] = pixel[2]; // B
+                            // Alpha (newData[destIndex + 3]) is already 255
+                        }
+                    }
+                }
+            }
+        });
+    });
+
+    // Put the fully modified data back onto the canvas
+    ctx.putImageData(distortedImageData, 0, 0);
+    img.hidden = true;
+    layer.hidden = false;
+}
+
 </script>
 </body>
 </html>
