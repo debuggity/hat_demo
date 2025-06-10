@@ -23,6 +23,9 @@
     --corner:    2px;
   }
   html,body{height:100%;margin:0}
+  html{
+    zoom:80%;   /* page renders at 80 % of normal size */
+  }
   body{
     font-family:'VT323',monospace;
     background:
@@ -214,7 +217,7 @@ const hatBase=new Image(); hatBase.src=hatSrc;
 
 const hats=[];
 let selectedHat = null;
-const OVERHANG=.5;
+const OVERHANG=.75;
 
 // --- INITIALIZATION ---
 (async()=>{
