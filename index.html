@@ -516,6 +516,19 @@ function addHat({box}){
             }),
         ],
     })
+    .gesturable({
+      listeners: {
+        start (ev) {          // remember the angle the moment the gesture begins
+          selectHat(h);       // highlight on first touch
+          h._startRot = +h.dataset.rot || 0;
+        },
+        move (ev) {           // ev.da = “delta-angle” since start
+          const ang = h._startRot + ev.da;
+          h.dataset.rot = ang;
+          h.style.transform = `rotate(${ang}deg)`;
+        }
+      }
+    })
     .on('tap', () => {
       selectHat(h);
     });
