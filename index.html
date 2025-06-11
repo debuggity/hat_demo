@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Face-Hats Suite</title>
+  <title>ADHDify</title>
 
   <!-- face-api.js -->
   <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
@@ -13,140 +13,133 @@
   <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
 
   <style>
-  /* ───── overall “PoolSuite” vibe ───── */
+  /* ─── variables ─── */
   :root{
-    --bg:        #f2efe8;
-    --ink:       #2b2b2b;
-    --mid:       #c2c2c2;
-    --light:     #faf9f5;
-    --shadow:    #7a7a7a;
-    --corner:    2px;
+    --bg:#f2efe8; --ink:#2b2b2b; --mid:#c2c2c2;
+    --light:#faf9f5; --shadow:#7a7a7a; --corner:2px;
+    --rainbow:linear-gradient(45deg,#ff0040,#ff8000,#ffff00,#00ff00,#00c0ff,#4000ff,#ff00c0);
   }
+
+  /* ─── layout ─── */
   html,body{height:100%;margin:0}
-  html{
-    zoom:80%;   /* page renders at 80 % of normal size */
-  }
+  html{zoom:80%}
   body{
     font-family:'VT323',monospace;
-    background:
-      var(--bg) url('wallpaper.png') repeat fixed;          /* faint script watermark */
-    color:var(--ink);
-    display:flex;
-    flex-direction:column;
-    align-items:center;
-    padding:60px 20px;
-    gap:30px;
+    background:var(--bg) url('wallpaper.png') repeat fixed;
+    color:var(--ink); display:flex; flex-direction:column;
+    align-items:center; padding:60px 20px; gap:30px;
   }
-  h2{
-    margin:0;
-    font-size:32px;
-    letter-spacing:1px;
-    text-shadow:1px 1px var(--light);
-  }
+  h2{margin:0;font-size:32px;letter-spacing:1px;text-shadow:1px 1px var(--light)}
 
-  /* ───── classic window frame ───── */
-  .window{
-    background:var(--light);
-    border:2px solid var(--ink);
-    box-shadow:0 0 0 1px var(--shadow);
-    display:inline-block;
-  }
-  .titlebar{
-    height:24px;
-    background:var(--mid);
-    display:flex;
-    align-items:center;
-    justify-content:space-between;
-    padding:0 6px;
-    border-bottom:2px solid var(--ink);
-    font-size:19px;
-  }
+  /* ─── window frame ─── */
+  .window{background:var(--light);border:2px solid var(--ink);box-shadow:0 0 0 1px var(--shadow);display:inline-block}
+  .titlebar{height:24px;background:var(--mid);display:flex;align-items:center;justify-content:space-between;padding:0 6px;border-bottom:2px solid var(--ink);font-size:19px}
   .controls{display:flex;gap:3px}
-  .btn-square{
-    width:14px;height:14px;
-    background:var(--light);
-    border:1px solid var(--ink);
-  }
+  .btn-square{width:14px;height:14px;background:var(--light);border:1px solid var(--ink)}
 
-  /* ───── interior layout ───── */
+  /* ─── content area ─── */
   .content{padding:20px;text-align:center}
-    #wrap{position:relative;display:inline-block;max-width:100%;overflow:hidden}
-    #wrap img, 
-    #wrap canvas{display:block;max-width:100%;height:auto;image-rendering:pixelated} 
-  #shot,           /* the main photo  */
-  #layer{          /* the bulge canvas */
-    position:absolute;
-    top:0;left:0;
-    max-width:100%;height:auto;
-    image-rendering:pixelated;
-    pointer-events:none;
-    z-index:0;
-  }
-  .hat{position:absolute;cursor:move;touch-action:none;user-select:none;box-sizing:border-box;}
+  #wrap{position:relative;display:inline-block;max-width:100%;overflow:hidden}
+  #wrap img,#wrap canvas{display:block;max-width:100%;height:auto;image-rendering:pixelated}
+  #shot,#layer{position:absolute;top:0;left:0;max-width:100%;height:auto;image-rendering:pixelated;pointer-events:none;z-index:0}
+  .hat{position:absolute;cursor:move;touch-action:none;user-select:none;box-sizing:border-box}
+  .hat.selected{border:2px dashed var(--ink)}
+  .delete-btn{position:absolute;top:-8px;right:-8px;width:20px;height:20px;background:#ff5555;color:#fff;border:1px solid var(--ink);border-radius:50%;cursor:pointer;display:none;align-items:center;justify-content:center;font:700 16px sans-serif;z-index:10}
+  .hat.selected .delete-btn{display:flex}
 
-  .hat.selected {
-    border: 2px dashed var(--ink);
-  }
-  .delete-btn {
-    position: absolute;
-    top: -8px; right: -8px;
-    width: 20px; height: 20px;
-    background: #ff5555;
-    color: white;
-    border: 1px solid var(--ink);
-    border-radius: 50%;
-    cursor: pointer;
-    display: none;
-    align-items: center; justify-content: center;
-    font-size: 16px; line-height: 16px;
-    font-family: sans-serif;
-    font-weight: bold;
-    z-index: 10;
-  }
-  .hat.selected .delete-btn {
-    display: flex;
-  }
-
-  /* ───── retro buttons & inputs ───── */
+  /* ─── buttons – base ─── */
   input[type=file],button{
-    font-family:inherit;
-    font-size: 16px;
-    background:var(--light);
-    border:2px solid var(--ink);
-    padding:6px 12px;
-    margin:4px;
-    cursor:pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
+    font-family:inherit;font-size:16px;background:var(--light);
+    border:2px solid var(--ink);padding:6px 12px;margin:4px;
+    cursor:pointer;display:inline-flex;align-items:center;gap:8px;
+    transition:.2s all;
   }
   input[type=file]::file-selector-button{
-    font-family:inherit;
-    background:var(--mid);
-    border:none;
-    padding:4px 10px;
-    cursor:pointer;
+    font-family:inherit;background:var(--mid);border:none;padding:4px 10px;cursor:pointer;
   }
   button:disabled{opacity:.4;cursor:not-allowed}
 
-  /* new icon styles */
-  button svg {
-    width: 16px;
-    height: 16px;
-    fill: currentColor;
+  /* ─── icon sizing ─── */
+  button svg{width:16px;height:16px;fill:currentColor}
+
+  /* ─── rainbow animation ─── */
+  @keyframes rainbowShift{
+    0%,100%{background-position:0% 50%}
+    50%{background-position:100% 50%}
   }
 
+  @keyframes adhdJitter {
+    0%, 100% { transform: translate(0, 0); }
+    20% { transform: translate(-2px, 2px); }
+    40% { transform: translate(2px, -2px); }
+    60% { transform: translate(-1px, -1px); }
+    80% { transform: translate(1px, 1px); }
+  }
+
+  /* ADHDify (run) */
+  #run:hover{
+    color:#fff;
+    border-color:#fff;
+    text-shadow: 1px 1px 3px rgba(0,0,0,0.7); /* ADDED FOR VISIBILITY */
+    background: repeating-linear-gradient(
+        -45deg,
+        #ff0040, #ff0040 12px, #ff8000 12px, #ff8000 24px,
+        #ffff00 24px, #ffff00 36px, #00ff00 36px, #00ff00 48px,
+        #00c0ff 48px, #00c0ff 60px, #4000ff 60px, #4000ff 72px
+    );
+    background-size: 250% 250%;
+    animation: rainbowShift 5s linear infinite;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 0 var(--shadow);
+  }
+
+  /* ULTRA ADHDify (ultraRun) */
+  #ultraRun{
+    border-width:3px;font-weight:bold;
+  }
+  /* Faster, thinner stripes with a jitter animation and glitchy shadow */
+  #ultraRun:hover{
+    color:#fff;
+    border-color: var(--ink);
+    background: repeating-linear-gradient(
+        -45deg,
+        #ff0040, #ff0040 7px, #ff8000 7px, #ff8000 14px,
+        #ffff00 14px, #ffff00 21px, #00ff00 21px, #00ff00 28px,
+        #00c0ff 28px, #00c0ff 35px, #4000ff 35px, #4000ff 42px
+    );
+    background-size: 350% 350%;
+    animation:
+        rainbowShift 2s linear infinite,
+        adhdJitter 0.25s linear infinite;
+    box-shadow: 3px 3px 0 #ff0040, -3px -3px 0 #00c0ff;
+    /* ENHANCED SHADOW FOR MAX VISIBILITY */
+    text-shadow: 1px 1px 0 #000, 2px 2px 0 #000;
+  }
+
+  /* Add Hat */
+  #addHat{background:#55aa55;color:#fff;border-color:#3d7e3d}
+  #addHat:hover{background:#69c069;border-color:#55aa55;box-shadow:0 0 8px rgba(0,128,0,.4)}
+
+  /* Delete Selected */
+  #deleteHat{background:#cc4444;color:#fff;border-color:#992c2c}
+  #deleteHat:hover{background:#e66767;border-color:#cc4444;box-shadow:0 0 8px rgba(200,0,0,.4)}
+
+  /* Download button – keep neutral but clearer intent */
+  #download{background:#3d88c8;color:#fff;border-color:#2b5a80}
+  #download:hover{background:#4d9ae0;border-color:#3d88c8;box-shadow:0 0 8px rgba(0,64,128,.4)}
+
+  /* status text */
   #status{margin-top:12px;color:var(--shadow);font-size:18px}
   </style>
 </head>
 <body>
 
-  <h2>Face Detector · Moveable Hats · Goofy Eyes</h2>
+  <h2>Magic ADHD filters · Moveable ADHD Brains · Goofy Eyes</h2>
 
   <!-- main app window -->
   <div class="window">
     <div class="titlebar">
-      <span>Hat Suite v2.0</span>
+      <span>ADHD Filter Suite v2.0</span>
       <div class="controls">
         <div class="btn-square"></div>
         <div class="btn-square"></div>
@@ -156,9 +149,9 @@
     <div class="content">
       <input type="file" id="pick" accept="image/*">
       <button id="run" disabled>
-        <!-- Magic Wand Icon -->
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" shape-rendering="crispEdges">
-          <path d="M15.5 0.5L10 6L11 7L13 5L15 7L16 6L14 4L16 2L15.5 0.5zM0 10L6 4L7 5L1 11L0 10z M7 0H9V2H7z M7 14H9V16H7z M0 7H2V9H0z M14 7H16V9H14z"/>
+        <!-- Magic Wand Icon (NEW PIXEL-PERFECT VERSION) -->
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" shape-rendering="crispEdges">
+          <path d="M4 20L16 8l2 2L6 22l-2-2z M17 2h2v4h4v2h-4v4h-2V8h-4V6h4V2z" fill="currentColor"/>
         </svg>
         ADHDify
       </button>
@@ -515,19 +508,6 @@ function addHat({box}){
                 equalDelta: true,
             }),
         ],
-    })
-    .gesturable({
-      listeners: {
-        start (ev) {          // remember the angle the moment the gesture begins
-          selectHat(h);       // highlight on first touch
-          h._startRot = +h.dataset.rot || 0;
-        },
-        move (ev) {           // ev.da = “delta-angle” since start
-          const ang = h._startRot + ev.da;
-          h.dataset.rot = ang;
-          h.style.transform = `rotate(${ang}deg)`;
-        }
-      }
     })
     .on('tap', () => {
       selectHat(h);
